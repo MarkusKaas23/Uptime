@@ -1,4 +1,4 @@
-# StandUpBar 🧍
+# Uptime 🧍
 
 > A macOS menu bar app that helps desk workers build a sustainable sit/stand habit — with a character that evolves from cave-dweller to posture champion as you improve.
 
@@ -11,7 +11,7 @@
 
 ## What It Does
 
-StandUpBar lives quietly in your menu bar and counts down to your next sit/stand switch. Click the icon to see your status, toggle your state, and track your weekly progress — all without ever opening a full app window.
+Uptime lives quietly in your menu bar and counts down to your next sit/stand switch. Click the icon to see your status, toggle your state, and track your weekly progress — all without ever opening a full app window.
 
 The twist: your **posture character** evolves based on how consistently you hit your weekly goal. Start as a hunched cave-dweller. Graduate to office slouch, upriser, and finally — posture champion, arms raised in victory.
 
@@ -100,8 +100,8 @@ Progress is measured by how many of your tracked days this week hit your goal:
 ## Project Structure (planned)
 
 ```
-StandUpBar/
-├── StandUpBarApp.swift        # App entry point, MenuBarExtra
+Uptime/
+├── UptimeApp.swift        # App entry point, MenuBarExtra
 ├── Models/
 │   ├── Session.swift          # SwiftData model for sit/stand sessions
 │   ├── CycleEngine.swift      # Timer logic, state machine
@@ -122,7 +122,7 @@ StandUpBar/
 
 Similar open-source macOS menu bar apps worth studying:
 
-- [CapyTimer](https://github.com/andev0x/CapyTimer) — Pomodoro + menu bar, SwiftUI, very close structure to StandUpBar
+- [CapyTimer](https://github.com/andev0x/CapyTimer) — Pomodoro + menu bar, SwiftUI, very close structure to Uptime
 - [MenubarCountdown](https://github.com/kristopherjohnson/MenubarCountdown) — How to show dynamic text/timer in the status bar icon
 - [reminders-menubar](https://github.com/DamascenoRafael/reminders-menubar) — Clean SwiftUI popover layout pattern
 - [SwiftBar](https://github.com/swiftbar/SwiftBar) — Advanced menu bar customization reference
