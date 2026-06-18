@@ -9,25 +9,25 @@ import ServiceManagement
 class CycleEngine: ObservableObject {
 
     // MARK: - Published
-    @Published var isStanding:        Bool
-    @Published var secondsRemaining:  Int
-    @Published var sessions:          [Session]
-    @Published var settings:          AppSettings
-    @Published var trackingMode:      TrackingMode
+    @Published var isStanding:       Bool
+    @Published var secondsRemaining: Int
+    @Published var sessions:         [Session]
+    @Published var settings:         AppSettings
+    @Published var trackingMode:     TrackingMode
 
     // MARK: - Private
-    private var timerCancellable: AnyCancellable?
+    private var timerCancellable:  AnyCancellable?
     private var currentSessionStart: Date
-    private var notificationFired = false   // prevent repeat notifications at cycle end
+    private var notificationFired = false
 
     // MARK: - Init
     init() {
-        let savedSettings  = AppSettings.load()
-        let savedSessions  = Session.loadAll()
-        let wasStanding    = UserDefaults.standard.bool(forKey: "uptime_isStanding")
-        let sessionStart   = (UserDefaults.standard.object(forKey: "uptime_sessionStart") as? Date) ?? Date()
-        let modeRaw        = UserDefaults.standard.string(forKey: "uptime_trackingMode") ?? "active"
-        let savedMode      = TrackingMode(rawValue: modeRaw) ?? .active
+        let savedSettings = AppSettings.load()
+        let savedSessions = Session.loadAll()
+        let wasStanding   = UserDefaults.standard.bool(forKey: "uptime_isStanding")
+        let sessionStart  = (UserDefaults.standard.object(forKey: "uptime_sessionStart") as? Date) ?? Date()
+        let modeRaw       = UserDefaults.standard.string(forKey: "uptime_trackingMode") ?? "active"
+        let savedMode     = TrackingMode(rawValue: modeRaw) ?? .active
 
         self.settings             = savedSettings
         self.sessions             = savedSessions
@@ -35,10 +35,10 @@ class CycleEngine: ObservableObject {
         self.currentSessionStart  = sessionStart
         self.trackingMode         = savedMode
 
-        // Restore the countdown based on how much time has already elapsed
-        let elapsed      = Int(Date().timeIntervalSince(sessionStart))
-        let cycleSecs    = wasStanding ? savedSettings.standMinutes * 60
-                                       : savedSettings.sitMinutes   * 60
+        // Restore countdown based on elapsed time
+        let elapsed   = Int(Date().timeIntervalSince(sessionStart))
+        let cycleSecs = wasStanding ? savedSettings.standMinutes * 60
+                                    : savedSettings.sitMinutes   * 60
         self.secondsRemaining = max(0, cycleSecs - elapsed)
 
         startTimer()
@@ -66,18 +66,15 @@ class CycleEngine: ObservableObject {
 
     // MARK: - Toggle sit / stand
     func toggle() {
-        // Close out the current session
         let finished = Session(isStanding: isStanding,
                                start: currentSessionStart,
                                end: Date())
         sessions.append(finished)
 
-        // Keep only the last 30 days
         let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
         sessions = sessions.filter { $0.start >= cutoff }
         Session.saveAll(sessions)
 
-        // Flip state, reset timer
         isStanding          = !isStanding
         currentSessionStart = Date()
         secondsRemaining    = isStanding ? settings.standMinutes * 60
@@ -89,16 +86,15 @@ class CycleEngine: ObservableObject {
     }
 
     // MARK: - Pause / Away / End Day
-    func pause()   { enterInactiveMode(.paused) }
-    func away()    { enterInactiveMode(.away) }
-    func endDay()  { enterInactiveMode(.dayEnded) }
+    func pause()  { enterInactiveMode(.paused) }
+    func away()   { enterInactiveMode(.away) }
+    func endDay() { enterInactiveMode(.dayEnded) }
 
     func resume() {
-        // Start a fresh cycle in the current sit/stand state
-        currentSessionStart  = Date()
-        secondsRemaining     = isStanding ? settings.standMinutes * 60
-                                          : settings.sitMinutes   * 60
-        notificationFired    = false
+        currentSessionStart = Date()
+        secondsRemaining    = isStanding ? settings.standMinutes * 60
+                                         : settings.sitMinutes   * 60
+        notificationFired   = false
         setTrackingMode(.active)
         UserDefaults.standard.set(currentSessionStart, forKey: "uptime_sessionStart")
     }
@@ -108,10 +104,10 @@ class CycleEngine: ObservableObject {
         resume()
     }
 
-    /// Saves the partial current session, then switches to a non-active mode.
+    /// Saves the current partial session (if ≥ 1 min), then switches mode.
     private func enterInactiveMode(_ mode: TrackingMode) {
         let duration = Date().timeIntervalSince(currentSessionStart)
-        if duration >= 60 {                          // only save if ≥ 1 minute
+        if duration >= 60 {
             let partial = Session(isStanding: isStanding,
                                   start: currentSessionStart,
                                   end: Date())
@@ -132,7 +128,6 @@ class CycleEngine: ObservableObject {
     func applySettings(_ newSettings: AppSettings) {
         settings         = newSettings
         AppSettings.save(newSettings)
-        // Reset the current cycle to the new duration
         secondsRemaining = isStanding ? newSettings.standMinutes * 60
                                       : newSettings.sitMinutes   * 60
     }
@@ -140,23 +135,13 @@ class CycleEngine: ObservableObject {
     // MARK: - Launch at Login
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            settings.launchAtLogin = enabled
-            AppSettings.save(settings)
-        } catch {
-            // Registration can fail if the user has overridden it in System Settings;
-            // we update the stored value anyway so the toggle reflects intent.
-            settings.launchAtLogin = enabled
-            AppSettings.save(settings)
-        }
+            if enabled { try SMAppService.mainApp.register() }
+            else       { try SMAppService.mainApp.unregister() }
+        } catch { /* best-effort */ }
+        settings.launchAtLogin = enabled
+        AppSettings.save(settings)
     }
 
-    /// Sync the toggle with reality at launch: if the OS registration was removed
-    /// externally (e.g. System Settings), update our stored preference.
     func syncLaunchAtLoginStatus() {
         let registered = (SMAppService.mainApp.status == .enabled)
         if settings.launchAtLogin != registered {
@@ -167,8 +152,8 @@ class CycleEngine: ObservableObject {
 
     // MARK: - Notification
     private func sendNotification() {
-        let content       = UNMutableNotificationContent()
-        content.sound     = .default
+        let content   = UNMutableNotificationContent()
+        content.sound = .default
         if isStanding {
             content.title = "Time to sit down 🪑"
             content.body  = "You've been standing for \(settings.standMinutes) min. Rest your legs."
@@ -177,8 +162,7 @@ class CycleEngine: ObservableObject {
             content.body  = "You've been sitting for \(settings.sitMinutes) min. Get up and move!"
         }
         let req = UNNotificationRequest(identifier: UUID().uuidString,
-                                        content: content,
-                                        trigger: nil)
+                                        content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
     }
 
@@ -197,9 +181,6 @@ class CycleEngine: ObservableObject {
     }
 
     // MARK: - Statistics
-
-    /// Returns all sessions (plus the live current session for today)
-    /// clipped to the boundaries of a specific day.
     func sessionsForDay(daysAgo: Int) -> [Session] {
         let cal      = Calendar.current
         let target   = cal.date(byAdding: .day, value: -daysAgo, to: Date())!
@@ -213,7 +194,6 @@ class CycleEngine: ObservableObject {
                            start: max(s.start, dayStart),
                            end:   min(s.end,   dayEnd))
         }
-
         if daysAgo == 0 {
             result.append(Session(isStanding: isStanding,
                                   start: max(currentSessionStart, dayStart),
@@ -231,11 +211,11 @@ class CycleEngine: ObservableObject {
 
     func weeklyData() -> [DayData] {
         (0..<7).reversed().map { daysAgo -> DayData in
-            let sesh     = sessionsForDay(daysAgo: daysAgo)
-            let total    = sesh.reduce(0.0) { $0 + $1.duration }
-            let pct      = standPercent(for: sesh)
-            let hasData  = total >= 60
-            let goalMet  = hasData && pct >= Double(settings.goalPercent)
+            let sesh    = sessionsForDay(daysAgo: daysAgo)
+            let total   = sesh.reduce(0.0) { $0 + $1.duration }
+            let pct     = standPercent(for: sesh)
+            let hasData = total >= 60
+            let goalMet = hasData && pct >= Double(settings.goalPercent)
 
             let date = cal.date(byAdding: .day, value: -daysAgo, to: Date())!
             let idx  = cal.component(.weekday, from: date) - 1
@@ -264,15 +244,15 @@ class CycleEngine: ObservableObject {
 
     var stageInfo: (name: String, color: Color) {
         switch characterStage {
-        case 0:  return ("The Cave Dweller",      .red)
-        case 1:  return ("The Office Slouch",     .orange)
-        case 2:  return ("The Upriser",           .blue)
-        case 3:  return ("The Posture Champion",  .purple)
-        default: return ("",                      .gray)
+        case 0:  return ("The Cave Dweller",     .red)
+        case 1:  return ("The Office Slouch",    .orange)
+        case 2:  return ("The Upriser",          .blue)
+        case 3:  return ("The Posture Champion", .purple)
+        default: return ("",                     .gray)
         }
     }
 
-    // MARK: - Streak (consecutive days meeting goal)
+    // MARK: - Streak
     var streak: Int {
         var count = 0
         for daysAgo in 0..<30 {
@@ -289,7 +269,7 @@ class CycleEngine: ObservableObject {
     var todayStandTime:    TimeInterval { sessionsForDay(daysAgo: 0).filter {  $0.isStanding }.reduce(0) { $0 + $1.duration } }
     var todaySitTime:      TimeInterval { sessionsForDay(daysAgo: 0).filter { !$0.isStanding }.reduce(0) { $0 + $1.duration } }
     var todayStandPercent: Double       { standPercent(for: sessionsForDay(daysAgo: 0)) }
-    var todayGoalMet:      Bool {
+    var todayGoalMet: Bool {
         let total = sessionsForDay(daysAgo: 0).reduce(0.0) { $0 + $1.duration }
         return total >= 60 && todayStandPercent >= Double(settings.goalPercent)
     }
@@ -297,16 +277,16 @@ class CycleEngine: ObservableObject {
     // MARK: - Motivation message
     var motivationMessage: String {
         switch (streak, characterStage) {
-        case (7..., _):  return "🔥 \(streak)-day streak — unstoppable!"
-        case (5..., _):  return "⚡ \(streak) days strong. Keep it up!"
-        case (3..., _):  return "💪 \(streak)-day streak! You're building a habit."
-        case (_, 3):     return "🏆 Champion-level week. Your future back thanks you."
-        case (_, 2):     return "📈 Solid week — you're trending up!"
-        case (_, 1):     return "🌱 Progress! Every standing minute counts."
-        default:         return "🚀 Ready to rise? Hit the button and stand up!"
+        case (7..., _): return "🔥 \(streak)-day streak — unstoppable!"
+        case (5..., _): return "⚡ \(streak) days strong. Keep it up!"
+        case (3..., _): return "💪 \(streak)-day streak! You're building a habit."
+        case (_, 3):    return "🏆 Champion-level week. Your future back thanks you."
+        case (_, 2):    return "📈 Solid week — you're trending up!"
+        case (_, 1):    return "🌱 Progress! Every standing minute counts."
+        default:        return "🚀 Ready to rise? Hit the button and stand up!"
         }
     }
 }
 
-// Make Color available without importing SwiftUI everywhere
+// Needed for Color in stageInfo
 import SwiftUI
