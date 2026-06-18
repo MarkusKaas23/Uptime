@@ -31,7 +31,7 @@ struct AppSettings: Codable {
     var sitMinutes:    Int  = 30    // Minutes per sit cycle
     var standMinutes:  Int  = 15    // Minutes per stand cycle
     var goalPercent:   Int  = 40    // % of tracked time that should be standing
-    var launchAtLogin: Bool = false // Register with SMAppService
+    var launchAtLogin: Bool = false // Registered with SMAppService
 
     static let storageKey = "uptime_settings"
 
