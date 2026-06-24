@@ -4,21 +4,21 @@ import UserNotifications
 import ServiceManagement
 
 // CycleEngine is the single source of truth for the entire app.
-// It drives the countdown timer, manages sessions, and computes
+// It drives the elapsed timer, manages sessions, and computes
 // all the statistics that the views display.
 class CycleEngine: ObservableObject {
 
     // MARK: - Published
-    @Published var isStanding:       Bool
-    @Published var secondsRemaining: Int
-    @Published var sessions:         [Session]
-    @Published var settings:         AppSettings
-    @Published var trackingMode:     TrackingMode
+    @Published var isStanding:     Bool
+    @Published var secondsElapsed: Int      // counts UP from 0 each cycle
+    @Published var sessions:       [Session]
+    @Published var settings:       AppSettings
+    @Published var trackingMode:   TrackingMode
 
     // MARK: - Private
-    private var timerCancellable:  AnyCancellable?
+    private var timerCancellable:    AnyCancellable?
     private var currentSessionStart: Date
-    private var notificationFired = false
+    private var notificationFired  = false
 
     // MARK: - Init
     init() {
@@ -29,20 +29,66 @@ class CycleEngine: ObservableObject {
         let modeRaw       = UserDefaults.standard.string(forKey: "uptime_trackingMode") ?? "active"
         let savedMode     = TrackingMode(rawValue: modeRaw) ?? .active
 
-        self.settings             = savedSettings
-        self.sessions             = savedSessions
-        self.isStanding           = wasStanding
-        self.currentSessionStart  = sessionStart
-        self.trackingMode         = savedMode
+        self.settings            = savedSettings
+        self.sessions            = savedSessions
+        self.isStanding          = wasStanding
+        self.currentSessionStart = sessionStart
+        self.trackingMode        = savedMode
 
-        // Restore countdown based on elapsed time
-        let elapsed   = Int(Date().timeIntervalSince(sessionStart))
-        let cycleSecs = wasStanding ? savedSettings.standMinutes * 60
-                                    : savedSettings.sitMinutes   * 60
-        self.secondsRemaining = max(0, cycleSecs - elapsed)
+        // Restore elapsed time since session started
+        let elapsed = Int(Date().timeIntervalSince(sessionStart))
+        self.secondsElapsed = max(0, elapsed)
+
+        // If we were already past the target when we relaunched, mark notif as fired
+        let target = wasStanding ? savedSettings.standMinutes * 60 : savedSettings.sitMinutes * 60
+        self.notificationFired = (elapsed >= target)
+
+        // ── Day-change detection ─────────────────────────────────────────
+        // If the saved session is from a previous calendar day, reset to a fresh day.
+        let sessionDay = Calendar.current.startOfDay(for: sessionStart)
+        let today      = Calendar.current.startOfDay(for: Date())
+        if sessionDay < today && savedMode != .dayEnded {
+            self.isStanding          = false
+            self.secondsElapsed      = 0
+            self.notificationFired   = false
+            self.currentSessionStart = Date()
+            self.trackingMode        = .active
+            UserDefaults.standard.set(false,                        forKey: "uptime_isStanding")
+            UserDefaults.standard.set(Date(),                       forKey: "uptime_sessionStart")
+            UserDefaults.standard.set(TrackingMode.active.rawValue, forKey: "uptime_trackingMode")
+        }
 
         startTimer()
+        registerQuitObserver()
         syncLaunchAtLoginStatus()
+    }
+
+    // MARK: - Quit handling
+    private func registerQuitObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in self?.handleAppQuit() }
+    }
+
+    private func handleAppQuit() {
+        guard trackingMode == .active else { return }
+        // Save any partial session (≥ 1 min) before exit
+        let duration = Date().timeIntervalSince(currentSessionStart)
+        if duration >= 60 {
+            let partial = Session(isStanding: isStanding,
+                                  start: currentSessionStart,
+                                  end: Date())
+            var all = sessions
+            all.append(partial)
+            let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+            all = all.filter { $0.start >= cutoff }
+            Session.saveAll(all)
+        }
+        // Mark as paused so next launch restores a paused state (same day)
+        // or the day-change logic in init will auto-start a new day (next day).
+        UserDefaults.standard.set(TrackingMode.paused.rawValue, forKey: "uptime_trackingMode")
+        UserDefaults.standard.synchronize()
     }
 
     // MARK: - Timer
@@ -55,10 +101,8 @@ class CycleEngine: ObservableObject {
 
     private func tick() {
         guard trackingMode == .active else { return }
-        if secondsRemaining > 0 {
-            secondsRemaining -= 1
-            notificationFired = false
-        } else if !notificationFired {
+        secondsElapsed += 1
+        if secondsElapsed >= targetSeconds && !notificationFired {
             sendNotification()
             notificationFired = true
         }
@@ -77,8 +121,7 @@ class CycleEngine: ObservableObject {
 
         isStanding          = !isStanding
         currentSessionStart = Date()
-        secondsRemaining    = isStanding ? settings.standMinutes * 60
-                                         : settings.sitMinutes   * 60
+        secondsElapsed      = 0
         notificationFired   = false
 
         UserDefaults.standard.set(isStanding,          forKey: "uptime_isStanding")
@@ -92,8 +135,7 @@ class CycleEngine: ObservableObject {
 
     func resume() {
         currentSessionStart = Date()
-        secondsRemaining    = isStanding ? settings.standMinutes * 60
-                                         : settings.sitMinutes   * 60
+        secondsElapsed      = 0
         notificationFired   = false
         setTrackingMode(.active)
         UserDefaults.standard.set(currentSessionStart, forKey: "uptime_sessionStart")
@@ -126,10 +168,11 @@ class CycleEngine: ObservableObject {
 
     // MARK: - Update settings
     func applySettings(_ newSettings: AppSettings) {
-        settings         = newSettings
+        settings = newSettings
         AppSettings.save(newSettings)
-        secondsRemaining = isStanding ? newSettings.standMinutes * 60
-                                      : newSettings.sitMinutes   * 60
+        // Re-evaluate whether notification should fire with new target
+        let newTarget = newSettings.standMinutes * 60  // conservative check
+        if secondsElapsed < newTarget { notificationFired = false }
     }
 
     // MARK: - Launch at Login
@@ -155,29 +198,45 @@ class CycleEngine: ObservableObject {
         let content   = UNMutableNotificationContent()
         content.sound = .default
         if isStanding {
-            content.title = "Time to sit down 🪑"
-            content.body  = "You've been standing for \(settings.standMinutes) min. Rest your legs."
+            content.title = "Standing goal reached 🪑"
+            content.body  = "You've hit \(settings.standMinutes) min standing. Sit down when ready."
         } else {
-            content.title = "Time to stand up! 🧍"
-            content.body  = "You've been sitting for \(settings.sitMinutes) min. Get up and move!"
+            content.title = "Sitting goal reached 🧍"
+            content.body  = "You've been sitting \(settings.sitMinutes) min. Stand up when ready."
         }
         let req = UNNotificationRequest(identifier: UUID().uuidString,
                                         content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
     }
 
-    // MARK: - Display labels
+    // MARK: - Session progress
+    var targetSeconds: Int {
+        isStanding ? settings.standMinutes * 60 : settings.sitMinutes * 60
+    }
+
+    var goalReached: Bool {
+        secondsElapsed >= targetSeconds
+    }
+
+    /// Progress toward goal, capped at 1.0
+    var sessionProgress: Double {
+        guard targetSeconds > 0 else { return 0 }
+        return min(1.0, Double(secondsElapsed) / Double(targetSeconds))
+    }
+
+    var elapsedLabel: String {
+        String(format: "%d:%02d", secondsElapsed / 60, secondsElapsed % 60)
+    }
+
     var menuBarLabel: String {
         switch trackingMode {
-        case .active:   return "\(secondsRemaining / 60)m"
+        case .active:
+            let mins = secondsElapsed / 60
+            return goalReached ? "✓\(mins)m" : "\(mins)m"
         case .paused:   return "paused"
         case .away:     return "away"
         case .dayEnded: return "done"
         }
-    }
-
-    var countdownLabel: String {
-        String(format: "%d:%02d", secondsRemaining / 60, secondsRemaining % 60)
     }
 
     // MARK: - Statistics
