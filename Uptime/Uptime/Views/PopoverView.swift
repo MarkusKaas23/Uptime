@@ -24,10 +24,45 @@ struct PopoverView: View {
                                 .textCase(.uppercase)
                                 .tracking(1.5)
                         }
-                        Text(engine.countdownLabel)
+
+                        // Big elapsed timer
+                        Text(engine.elapsedLabel)
                             .font(.system(size: 40, weight: .bold, design: .monospaced))
                             .foregroundColor(engine.isStanding ? .green : .red)
                             .animation(.easeInOut(duration: 0.3), value: engine.isStanding)
+
+                        // Progress bar toward goal
+                        VStack(spacing: 4) {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                                        .frame(height: 5)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(engine.goalReached
+                                              ? Color.green
+                                              : (engine.isStanding ? Color.green : Color.red))
+                                        .frame(width: geo.size.width * engine.sessionProgress,
+                                               height: 5)
+                                        .animation(.linear(duration: 1), value: engine.sessionProgress)
+                                }
+                            }
+                            .frame(height: 5)
+
+                            if engine.goalReached {
+                                Label("Goal reached!", systemImage: "checkmark.circle.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.green)
+                            } else {
+                                let targetMin = engine.isStanding
+                                    ? engine.settings.standMinutes
+                                    : engine.settings.sitMinutes
+                                Text("Goal: \(targetMin) min")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
                         Button { engine.toggle() } label: {
                             Label(
                                 engine.isStanding ? "I'm Now Sitting" : "I'm Now Standing!",
@@ -117,7 +152,7 @@ struct PopoverView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showStages = true }
                 } label: {
                     CharacterView(stage: engine.characterStage)
-                        .frame(width: 90, height: 110)
+                        .frame(width: 100, height: 100)
                         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: engine.characterStage)
                 }
                 .buttonStyle(.plain)
@@ -161,11 +196,6 @@ struct PopoverView: View {
                         .textCase(.uppercase)
                         .tracking(1.5)
                     Spacer()
-                    if engine.todayGoalMet {
-                        Label("Goal met", systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.green)
-                    }
                 }
 
                 HStack(spacing: 8) {
