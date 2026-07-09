@@ -4,12 +4,16 @@ struct StagesOverviewView: View {
     @EnvironmentObject var engine: CycleEngine
     @Binding var show: Bool
 
-    private let stages: [(name: String, subtitle: String, threshold: String, color: Color)] = [
-        ("The Cave Dweller",     "🦴",  "0–24% of goal days",   .red),
-        ("The Office Slouch",    "😑",  "25–49% of goal days",  .orange),
-        ("The Upriser",          "🙂",  "50–74% of goal days",  .blue),
-        ("The Posture Champion", "🏆",  "75–100% of goal days", .purple),
+    private let stages: [(name: String, subtitle: String, color: Color)] = [
+        ("The Cave Dweller",     "🦴",  .red),
+        ("The Office Slouch",    "😑",  .orange),
+        ("The Upriser",          "🙂",  .blue),
+        ("The Posture Champion", "🏆",  .purple),
     ]
+
+    private func threshold(for stage: Int) -> String {
+        "Level \(LevelSystem.stageThresholds[stage])+"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,7 +53,7 @@ struct StagesOverviewView: View {
                             stage: i,
                             name: stages[i].name,
                             emoji: stages[i].subtitle,
-                            threshold: stages[i].threshold,
+                            threshold: threshold(for: i),
                             color: stages[i].color,
                             isCurrent: engine.characterStage == i,
                             isUnlocked: engine.characterStage >= i
