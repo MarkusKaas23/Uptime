@@ -166,6 +166,9 @@ struct PopoverView: View {
                         .foregroundColor(.secondary)
                 }
 
+                LevelBadge()
+                    .environmentObject(engine)
+
                 Text(engine.motivationMessage)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
@@ -287,6 +290,42 @@ struct PopoverView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(1)
             }
+        }
+        .overlay {
+            if let event = engine.levelUpEvent {
+                LevelUpView(event: event)
+                    .environmentObject(engine)
+                    .transition(.opacity.combined(with: .scale))
+                    .zIndex(2)
+            }
+        }
+    }
+}
+
+// MARK: - Level Badge (pill + XP progress bar)
+private struct LevelBadge: View {
+    @EnvironmentObject var engine: CycleEngine
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Lv \(engine.level)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(engine.stageInfo.color)
+                .clipShape(Capsule())
+
+            GeometryReader { geo in
+                Capsule()
+                    .fill(Color(nsColor: .separatorColor).opacity(0.3))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(engine.stageInfo.color)
+                            .frame(width: geo.size.width * engine.levelProgressRatio)
+                    }
+            }
+            .frame(width: 60, height: 4)
         }
     }
 }
