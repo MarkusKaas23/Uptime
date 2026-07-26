@@ -49,14 +49,19 @@ Sources:
 
 ## Character Stages
 
-Progress is measured by how many of your tracked days this week hit your goal:
+Progress is a persistent **level**, not a weekly score — it only ever goes up. Each finished
+day awards XP scaled to how close you got to your standing goal, with a streak bonus (up to
++30% at a 10-day streak). The weekly bars still show *this week's* consistency, but a rough
+week no longer de-levels your character — only new days finished below goal slow the climb.
 
-| Stage | Threshold | Description |
+| Stage | Unlocks at | Description |
 |---|---|---|
-| 🦴 The Cave Dweller | 0–24% of goal days | Severely hunched, knuckles dragging |
-| 😑 The Office Slouch | 25–49% | Forward head, drooping shoulders |
-| 🙂 The Upriser | 50–74% | Standing tall, hint of a smile |
-| 🏆 The Posture Champion | 75–100% | Arms raised, wearing a crown |
+| 🦴 The Cave Dweller | Level 1 | Severely hunched, knuckles dragging |
+| 😑 The Office Slouch | Level 6 | Forward head, drooping shoulders |
+| 🙂 The Upriser | Level 12 | Standing tall, hint of a smile |
+| 🏆 The Posture Champion | Level 20 | Arms raised, wearing a crown |
+
+Crossing a level (or stage) boundary triggers a one-time level-up celebration in the popover.
 
 ---
 
@@ -64,15 +69,17 @@ Progress is measured by how many of your tracked days this week hit your goal:
 
 ### v1 — MVP (in development)
 - [x] HTML prototype with full character system and weekly tracking
-- [ ] macOS menu bar app shell (MenuBarExtra + SwiftUI popover)
-- [ ] Cycle timer with countdown display in menu bar
-- [ ] Sit/Stand toggle with session logging
-- [ ] Local notifications ("Time to stand!")
+- [x] macOS menu bar app shell (MenuBarExtra + SwiftUI popover)
+- [x] Cycle timer with countdown display in menu bar
+- [x] Sit/Stand toggle with session logging
+- [x] Local notifications ("Time to stand!")
 - [ ] Adaptive onboarding (workday length → suggested cycle)
-- [ ] 4-stage character drawn in SwiftUI Canvas
-- [ ] Weekly progress bar + streak tracking
-- [ ] SwiftData persistence
-- [ ] Settings panel (cycle sliders, presets, launch at login)
+- [x] 4-stage character (illustrated PNGs, not yet Canvas-drawn)
+- [x] Weekly progress bar + streak tracking
+- [ ] SwiftData persistence (currently UserDefaults + JSON — fine for v1, revisit if data needs grow)
+- [x] Settings panel (cycle sliders, presets, launch at login)
+
+Remaining before App Store submission — see [Submission Checklist](#app-store-submission-checklist) below.
 
 ### v2 — Post-launch
 - [ ] Apple Watch companion app
@@ -149,6 +156,37 @@ Building this from scratch with SwiftUI:
 - **Weeks 4–5** — Menu bar shell + working cycle timer + notifications
 - **Weeks 6–8** — Character system + data persistence + onboarding
 - **Weeks 9–10** — Polish, App Store assets, TestFlight beta, submit
+
+---
+
+## App Store Submission Checklist
+
+### Account & signing
+- [ ] Enroll in the Apple Developer Program ($99/yr, requires identity verification — can take a few days)
+- [ ] In Xcode → target → Signing & Capabilities, set your Team (bundle ID `com.markuskaas.Uptime` is already set)
+- [ ] Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` before each submission
+
+### App content
+- [ ] Replace the 4 giraffe stage illustrations with a style-consistent set (see art pipeline notes below)
+- [ ] Decide whether more/finer level tiers are wanted before locking in the character progression
+- [ ] Add an app icon that matches the final illustration style (current `AppIcon.appiconset` is a placeholder)
+- [ ] Write real onboarding copy / first-run flow (currently jumps straight into "Standard" preset)
+
+### App Store Connect listing
+- [ ] Create the app record in App Store Connect, matching bundle ID
+- [ ] App name, subtitle, description, keywords, category (likely Health & Fitness or Productivity)
+- [ ] 3–10 screenshots per required Mac display size (App Store Connect will list exact sizes)
+- [ ] Privacy policy URL — required even though this app stores everything locally (no account, no network calls)
+- [ ] Support URL
+- [ ] Age rating questionnaire
+- [ ] Export compliance: app uses no encryption beyond standard OS APIs → answer "No" to the encryption question
+- [ ] Pricing tier (free, per the v1 plan — Pro/IAP is v2 scope)
+
+### Build & submit
+- [ ] Archive (Product → Archive) with a Release build, signed with your Distribution certificate
+- [ ] Validate and upload via Xcode Organizer (or `xcodebuild -exportArchive`)
+- [ ] TestFlight beta — invite a few people who actually work desk jobs, since the character-motivation loop is the whole pitch
+- [ ] Submit for review once TestFlight feedback is incorporated
 
 ---
 
