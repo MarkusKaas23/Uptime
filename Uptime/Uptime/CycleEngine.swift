@@ -14,6 +14,8 @@ class CycleEngine: ObservableObject {
     @Published var sessions:       [Session]
     @Published var settings:       AppSettings
     @Published var trackingMode:   TrackingMode
+    @Published var progress:       ProgressState
+    @Published var levelUpEvent:   LevelUpEvent? = nil
 
     // MARK: - Private
     private var timerCancellable:    AnyCancellable?
@@ -24,6 +26,7 @@ class CycleEngine: ObservableObject {
     init() {
         let savedSettings = AppSettings.load()
         let savedSessions = Session.loadAll()
+        let savedProgress = ProgressState.load()
         let wasStanding   = UserDefaults.standard.bool(forKey: "uptime_isStanding")
         let sessionStart  = (UserDefaults.standard.object(forKey: "uptime_sessionStart") as? Date) ?? Date()
         let modeRaw       = UserDefaults.standard.string(forKey: "uptime_trackingMode") ?? "active"
@@ -31,6 +34,7 @@ class CycleEngine: ObservableObject {
 
         self.settings            = savedSettings
         self.sessions            = savedSessions
+        self.progress            = savedProgress
         self.isStanding          = wasStanding
         self.currentSessionStart = sessionStart
         self.trackingMode        = savedMode
@@ -48,6 +52,12 @@ class CycleEngine: ObservableObject {
         let sessionDay = Calendar.current.startOfDay(for: sessionStart)
         let today      = Calendar.current.startOfDay(for: Date())
         if sessionDay < today && savedMode != .dayEnded {
+            // Score every day that elapsed while the app was closed before resetting.
+            let daysGap = Calendar.current.dateComponents([.day], from: sessionDay, to: today).day ?? 1
+            for daysAgo in stride(from: daysGap, through: 1, by: -1) {
+                awardXPIfNeeded(daysAgo: daysAgo)
+            }
+
             self.isStanding          = false
             self.secondsElapsed      = 0
             self.notificationFired   = false
@@ -131,7 +141,10 @@ class CycleEngine: ObservableObject {
     // MARK: - Pause / Away / End Day
     func pause()  { enterInactiveMode(.paused) }
     func away()   { enterInactiveMode(.away) }
-    func endDay() { enterInactiveMode(.dayEnded) }
+    func endDay() {
+        awardXPIfNeeded(daysAgo: 0)
+        enterInactiveMode(.dayEnded)
+    }
 
     func resume() {
         currentSessionStart = Date()
@@ -287,19 +300,59 @@ class CycleEngine: ObservableObject {
 
     private var cal: Calendar { .current }
 
-    // MARK: - Character stage (0 = cave dweller … 3 = champion)
-    var characterStage: Int {
-        let week    = weeklyData()
-        let tracked = week.filter { $0.hasData }
-        guard !tracked.isEmpty else { return 0 }
-        let pct = Double(tracked.filter { $0.goalMet }.count) / Double(tracked.count) * 100
-        switch pct {
-        case 75...: return 3
-        case 50...: return 2
-        case 25...: return 1
-        default:    return 0
+    // MARK: - Leveling
+    /// Awards XP for one finished calendar day, at most once per day
+    /// (guarded by `progress.lastAwardedDayStart`), and raises `levelUpEvent`
+    /// if that day's XP pushed the user across a level or stage boundary.
+    private func awardXPIfNeeded(daysAgo: Int) {
+        let dayStart = cal.startOfDay(for: cal.date(byAdding: .day, value: -daysAgo, to: Date())!)
+        if let last = progress.lastAwardedDayStart, dayStart <= last { return }
+        progress.lastAwardedDayStart = dayStart
+
+        let sesh  = sessionsForDay(daysAgo: daysAgo)
+        let total = sesh.reduce(0.0) { $0 + $1.duration }
+        guard total >= 60 else {
+            ProgressState.save(progress)
+            return
         }
+
+        let pct    = standPercent(for: sesh)
+        let earned = LevelSystem.dailyXP(standPercent: pct, goalPercent: settings.goalPercent, streak: streak)
+
+        let beforeLevel = LevelSystem.level(for: progress.totalXP)
+        progress.totalXP += earned
+        let afterLevel = LevelSystem.level(for: progress.totalXP)
+
+        if afterLevel > progress.lastCelebratedLevel {
+            let beforeStage = LevelSystem.stage(for: beforeLevel)
+            let afterStage  = LevelSystem.stage(for: afterLevel)
+            levelUpEvent = LevelUpEvent(newLevel: afterLevel,
+                                        xpEarned: earned,
+                                        didUnlockNewStage: afterStage > beforeStage,
+                                        newStage: afterStage)
+            progress.lastCelebratedLevel = afterLevel
+        }
+        ProgressState.save(progress)
     }
+
+    func dismissLevelUpEvent() { levelUpEvent = nil }
+
+    var level: Int { LevelSystem.level(for: progress.totalXP) }
+
+    var levelProgress: (xpIntoLevel: Int, xpForNextLevel: Int) {
+        let p = LevelSystem.progress(for: progress.totalXP)
+        return (p.xpIntoLevel, p.xpForNextLevel)
+    }
+
+    var levelProgressRatio: Double {
+        let p = levelProgress
+        return p.xpForNextLevel > 0 ? Double(p.xpIntoLevel) / Double(p.xpForNextLevel) : 0
+    }
+
+    // MARK: - Character stage (0 = cave dweller … 3 = champion)
+    // Driven by lifetime level, not the trailing week, so a rough week
+    // never de-levels the character — only the weekly bars reflect that.
+    var characterStage: Int { LevelSystem.stage(for: level) }
 
     var stageInfo: (name: String, color: Color) {
         switch characterStage {
