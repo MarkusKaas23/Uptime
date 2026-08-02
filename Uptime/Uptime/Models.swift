@@ -49,6 +49,30 @@ struct AppSettings: Codable {
     }
 }
 
+// MARK: - ProgressState
+// Persists lifetime XP so the character's level only ever goes up,
+// independent of the trailing-week stats shown in the weekly bars.
+struct ProgressState: Codable {
+    var totalXP:             Int  = 0
+    var lastAwardedDayStart: Date? = nil
+    var lastCelebratedLevel: Int  = 1
+
+    static let storageKey = "uptime_progress"
+
+    static func load() -> ProgressState {
+        guard
+            let data    = UserDefaults.standard.data(forKey: storageKey),
+            let decoded = try? JSONDecoder().decode(ProgressState.self, from: data)
+        else { return ProgressState() }
+        return decoded
+    }
+
+    static func save(_ state: ProgressState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+}
+
 // MARK: - TrackingMode
 enum TrackingMode: String, Codable {
     case active      // Normal sit/stand cycle
