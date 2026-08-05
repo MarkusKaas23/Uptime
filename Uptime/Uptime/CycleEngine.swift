@@ -2,6 +2,9 @@ import Foundation
 import Combine
 import UserNotifications
 import ServiceManagement
+import CoreGraphics   // idle detection
+import EventKit       // calendar sync
+import AppKit         // NSSound for custom notification sounds
 
 // CycleEngine is the single source of truth for the entire app.
 // It drives the elapsed timer, manages sessions, and computes
@@ -21,6 +24,13 @@ class CycleEngine: ObservableObject {
     private var timerCancellable:    AnyCancellable?
     private var currentSessionStart: Date
     private var notificationFired  = false
+
+    // Feature: break reminder
+    private var breakReminderElapsed = 0    // seconds since last break reminder
+
+    // Feature: calendar sync
+    private let eventStore           = EKEventStore()
+    private var calendarAccessGranted = false
 
     // MARK: - Init
     init() {
@@ -48,16 +58,13 @@ class CycleEngine: ObservableObject {
         self.notificationFired = (elapsed >= target)
 
         // ── Day-change detection ─────────────────────────────────────────
-        // If the saved session is from a previous calendar day, reset to a fresh day.
         let sessionDay = Calendar.current.startOfDay(for: sessionStart)
         let today      = Calendar.current.startOfDay(for: Date())
         if sessionDay < today && savedMode != .dayEnded {
-            // Score every day that elapsed while the app was closed before resetting.
             let daysGap = Calendar.current.dateComponents([.day], from: sessionDay, to: today).day ?? 1
             for daysAgo in stride(from: daysGap, through: 1, by: -1) {
                 awardXPIfNeeded(daysAgo: daysAgo)
             }
-
             self.isStanding          = false
             self.secondsElapsed      = 0
             self.notificationFired   = false
@@ -71,6 +78,9 @@ class CycleEngine: ObservableObject {
         startTimer()
         registerQuitObserver()
         syncLaunchAtLoginStatus()
+
+        // Pre-flight calendar access if already enabled
+        if savedSettings.calendarSyncEnabled { requestCalendarAccess() }
     }
 
     // MARK: - Quit handling
@@ -83,7 +93,6 @@ class CycleEngine: ObservableObject {
 
     private func handleAppQuit() {
         guard trackingMode == .active else { return }
-        // Save any partial session (≥ 1 min) before exit
         let duration = Date().timeIntervalSince(currentSessionStart)
         if duration >= 60 {
             let partial = Session(isStanding: isStanding,
@@ -95,8 +104,6 @@ class CycleEngine: ObservableObject {
             all = all.filter { $0.start >= cutoff }
             Session.saveAll(all)
         }
-        // Mark as paused so next launch restores a paused state (same day)
-        // or the day-change logic in init will auto-start a new day (next day).
         UserDefaults.standard.set(TrackingMode.paused.rawValue, forKey: "uptime_trackingMode")
         UserDefaults.standard.synchronize()
     }
@@ -111,7 +118,28 @@ class CycleEngine: ObservableObject {
 
     private func tick() {
         guard trackingMode == .active else { return }
+
+        // ── Idle detection ───────────────────────────────────────────────
+        if settings.idleDetectionEnabled {
+            let idle = systemIdleSeconds()
+            if idle >= Double(settings.idleThresholdMinutes * 60) {
+                pause()
+                return
+            }
+        }
+
         secondsElapsed += 1
+
+        // ── Break reminder ───────────────────────────────────────────────
+        if settings.breakReminderEnabled {
+            breakReminderElapsed += 1
+            if breakReminderElapsed >= settings.breakReminderMinutes * 60 {
+                sendBreakReminder()
+                breakReminderElapsed = 0
+            }
+        }
+
+        // ── Goal notification ────────────────────────────────────────────
         if secondsElapsed >= targetSeconds && !notificationFired {
             sendNotification()
             notificationFired = true
@@ -128,6 +156,9 @@ class CycleEngine: ObservableObject {
         let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
         sessions = sessions.filter { $0.start >= cutoff }
         Session.saveAll(sessions)
+
+        // Calendar sync: log the finished session
+        addCalendarEventIfNeeded(session: finished)
 
         isStanding          = !isStanding
         currentSessionStart = Date()
@@ -147,9 +178,10 @@ class CycleEngine: ObservableObject {
     }
 
     func resume() {
-        currentSessionStart = Date()
-        secondsElapsed      = 0
-        notificationFired   = false
+        currentSessionStart  = Date()
+        secondsElapsed       = 0
+        notificationFired    = false
+        breakReminderElapsed = 0   // reset break timer on resume
         setTrackingMode(.active)
         UserDefaults.standard.set(currentSessionStart, forKey: "uptime_sessionStart")
     }
@@ -159,7 +191,6 @@ class CycleEngine: ObservableObject {
         resume()
     }
 
-    /// Saves the current partial session (if ≥ 1 min), then switches mode.
     private func enterInactiveMode(_ mode: TrackingMode) {
         let duration = Date().timeIntervalSince(currentSessionStart)
         if duration >= 60 {
@@ -181,11 +212,16 @@ class CycleEngine: ObservableObject {
 
     // MARK: - Update settings
     func applySettings(_ newSettings: AppSettings) {
+        let wasCalendarEnabled = settings.calendarSyncEnabled
         settings = newSettings
         AppSettings.save(newSettings)
-        // Re-evaluate whether notification should fire with new target
-        let newTarget = newSettings.standMinutes * 60  // conservative check
+        // Re-evaluate notification threshold with new target
+        let newTarget = newSettings.standMinutes * 60
         if secondsElapsed < newTarget { notificationFired = false }
+        // Request calendar access if newly enabled
+        if newSettings.calendarSyncEnabled && !wasCalendarEnabled {
+            requestCalendarAccess()
+        }
     }
 
     // MARK: - Launch at Login
@@ -206,10 +242,11 @@ class CycleEngine: ObservableObject {
         }
     }
 
-    // MARK: - Notification
+    // MARK: - Notifications (goal reached)
     private func sendNotification() {
         let content   = UNMutableNotificationContent()
-        content.sound = .default
+        // Use system sound or silence depending on setting
+        content.sound = settings.notificationSound == "none" ? nil : .default
         if isStanding {
             content.title = "Standing goal reached 🪑"
             content.body  = "You've hit \(settings.standMinutes) min standing. Sit down when ready."
@@ -220,6 +257,72 @@ class CycleEngine: ObservableObject {
         let req = UNNotificationRequest(identifier: UUID().uuidString,
                                         content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
+        // Play custom NSSound on top of (or instead of) the notification sound
+        playSound(settings.notificationSound)
+    }
+
+    // MARK: - Break reminder notification
+    private func sendBreakReminder() {
+        let content   = UNMutableNotificationContent()
+        content.title = "Break time! 🚶"
+        content.body  = "Take a short walk or stretch — your body will thank you."
+        content.sound = settings.notificationSound == "none" ? nil : .default
+        let req = UNNotificationRequest(identifier: "break-\(UUID().uuidString)",
+                                        content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req)
+        playSound(settings.notificationSound)
+    }
+
+    // MARK: - Sound helper
+    private func playSound(_ name: String) {
+        guard name != "default" && name != "none" else { return }
+        NSSound(named: NSSound.Name(name))?.play()
+    }
+
+    // MARK: - Idle detection
+    /// Returns the number of seconds since the last mouse or keyboard event.
+    private func systemIdleSeconds() -> Double {
+        let mouseIdle = CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState, eventType: .mouseMoved)
+        let keyIdle = CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState, eventType: .keyDown)
+        let scrollIdle = CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState, eventType: .scrollWheel)
+        return min(mouseIdle, min(keyIdle, scrollIdle))
+    }
+
+    // MARK: - Calendar sync
+    /// Request EventKit access. Must be called before writing events.
+    /// Requires the "Calendars" capability in Xcode Signing & Capabilities.
+    func requestCalendarAccess() {
+        if #available(macOS 14.0, *) {
+            eventStore.requestFullAccessToEvents { [weak self] granted, _ in
+                DispatchQueue.main.async { self?.calendarAccessGranted = granted }
+            }
+        } else {
+            eventStore.requestAccess(to: .event) { [weak self] granted, _ in
+                DispatchQueue.main.async { self?.calendarAccessGranted = granted }
+            }
+        }
+    }
+
+    private func addCalendarEventIfNeeded(session: Session) {
+        guard settings.calendarSyncEnabled, calendarAccessGranted else { return }
+        guard session.duration >= 60 else { return }   // skip micro-sessions
+
+        // Use the default calendar or the first writable one
+        guard let calendar = eventStore.defaultCalendarForNewEvents
+                          ?? eventStore.calendars(for: .event).first(where: { !$0.isImmutable })
+        else { return }
+
+        let event       = EKEvent(eventStore: eventStore)
+        event.title     = session.isStanding ? "🧍 Standing (Uptime)" : "🪑 Sitting (Uptime)"
+        event.startDate = session.start
+        event.endDate   = session.end
+        event.calendar  = calendar
+        event.notes     = "Logged automatically by Uptime"
+
+        try? eventStore.save(event, span: .thisEvent)
     }
 
     // MARK: - Session progress
@@ -231,7 +334,6 @@ class CycleEngine: ObservableObject {
         secondsElapsed >= targetSeconds
     }
 
-    /// Progress toward goal, capped at 1.0
     var sessionProgress: Double {
         guard targetSeconds > 0 else { return 0 }
         return min(1.0, Double(secondsElapsed) / Double(targetSeconds))
@@ -245,7 +347,7 @@ class CycleEngine: ObservableObject {
         switch trackingMode {
         case .active:
             let mins = secondsElapsed / 60
-            return goalReached ? "✓\(mins)m" : "\(mins)m"
+            return "\(mins)m"   // icon switches to checkmark.circle.fill when goal is reached
         case .paused:   return "paused"
         case .away:     return "away"
         case .dayEnded: return "done"
@@ -294,16 +396,54 @@ class CycleEngine: ObservableObject {
             let lbl  = String(cal.shortWeekdaySymbols[idx].prefix(3))
 
             return DayData(label: lbl, standPercent: pct,
-                           goalMet: goalMet, hasData: hasData, isToday: daysAgo == 0)
+                           goalMet: goalMet, hasData: hasData,
+                           isToday: daysAgo == 0,
+                           totalMinutes: Int(total / 60))
         }
     }
 
     private var cal: Calendar { .current }
 
+    // MARK: - Weekly totals (for week summary feature)
+    var weeklyTotalStandTime: TimeInterval {
+        (0..<7).flatMap { sessionsForDay(daysAgo: $0) }
+               .filter { $0.isStanding }
+               .reduce(0) { $0 + $1.duration }
+    }
+
+    var weeklyTotalSitTime: TimeInterval {
+        (0..<7).flatMap { sessionsForDay(daysAgo: $0) }
+               .filter { !$0.isStanding }
+               .reduce(0) { $0 + $1.duration }
+    }
+
+    var weeklyTotalTime: TimeInterval {
+        (0..<7).flatMap { sessionsForDay(daysAgo: $0) }
+               .reduce(0) { $0 + $1.duration }
+    }
+
+    // MARK: - Morning / Afternoon split (for AM/PM feature)
+    private var noonToday: Date {
+        cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+
+    private var todayAMSessions: [Session] {
+        sessionsForDay(daysAgo: 0).filter { $0.start < noonToday }
+    }
+
+    private var todayPMSessions: [Session] {
+        sessionsForDay(daysAgo: 0).filter { $0.start >= noonToday }
+    }
+
+    var amStandTime:    TimeInterval { todayAMSessions.filter {  $0.isStanding }.reduce(0) { $0 + $1.duration } }
+    var amSitTime:      TimeInterval { todayAMSessions.filter { !$0.isStanding }.reduce(0) { $0 + $1.duration } }
+    var amStandPercent: Double       { standPercent(for: todayAMSessions) }
+
+    var pmStandTime:    TimeInterval { todayPMSessions.filter {  $0.isStanding }.reduce(0) { $0 + $1.duration } }
+    var pmSitTime:      TimeInterval { todayPMSessions.filter { !$0.isStanding }.reduce(0) { $0 + $1.duration } }
+    var pmStandPercent: Double       { standPercent(for: todayPMSessions) }
+
     // MARK: - Leveling
-    /// Awards XP for one finished calendar day, at most once per day
-    /// (guarded by `progress.lastAwardedDayStart`), and raises `levelUpEvent`
-    /// if that day's XP pushed the user across a level or stage boundary.
     private func awardXPIfNeeded(daysAgo: Int) {
         let dayStart = cal.startOfDay(for: cal.date(byAdding: .day, value: -daysAgo, to: Date())!)
         if let last = progress.lastAwardedDayStart, dayStart <= last { return }
@@ -350,8 +490,6 @@ class CycleEngine: ObservableObject {
     }
 
     // MARK: - Character stage (0 = cave dweller … 3 = champion)
-    // Driven by lifetime level, not the trailing week, so a rough week
-    // never de-levels the character — only the weekly bars reflect that.
     var characterStage: Int { LevelSystem.stage(for: level) }
 
     var stageInfo: (name: String, color: Color) {
