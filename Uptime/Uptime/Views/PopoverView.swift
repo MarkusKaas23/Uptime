@@ -179,6 +179,22 @@ struct PopoverView: View {
                     .frame(height: 58)
                     .padding(.top, 4)
 
+                // ── Weekly summary totals ──────────────────────────────
+                if engine.settings.weekSummaryEnabled {
+                    HStack(spacing: 8) {
+                        StatPill(label: "Stand",
+                                 value: formatDuration(engine.weeklyTotalStandTime),
+                                 color: .green)
+                        StatPill(label: "Sit",
+                                 value: formatDuration(engine.weeklyTotalSitTime),
+                                 color: .red)
+                        StatPill(label: "Total",
+                                 value: formatDuration(engine.weeklyTotalTime),
+                                 color: .indigo)
+                    }
+                    .padding(.top, 2)
+                }
+
                 if engine.streak >= 2 {
                     Label("\(engine.streak)-day streak", systemImage: "flame.fill")
                         .font(.system(size: 11, weight: .semibold))
@@ -201,13 +217,50 @@ struct PopoverView: View {
                     Spacer()
                 }
 
-                HStack(spacing: 8) {
-                    StatPill(label: "Standing",
-                             value: formatDuration(engine.todayStandTime), color: .green)
-                    StatPill(label: "Sitting",
-                             value: formatDuration(engine.todaySitTime),   color: .red)
-                    StatPill(label: "Stand %",
-                             value: "\(Int(engine.todayStandPercent))%",   color: .indigo)
+                if engine.settings.morningAfternoonEnabled {
+                    // AM row
+                    VStack(spacing: 4) {
+                        HStack {
+                            Label("Morning", systemImage: "sun.haze.fill")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.orange)
+                            Spacer()
+                        }
+                        HStack(spacing: 6) {
+                            StatPill(label: "Stand",
+                                     value: formatDuration(engine.amStandTime), color: .green)
+                            StatPill(label: "Sit",
+                                     value: formatDuration(engine.amSitTime),   color: .red)
+                            StatPill(label: "%",
+                                     value: "\(Int(engine.amStandPercent))%",   color: .indigo)
+                        }
+                    }
+                    // PM row
+                    VStack(spacing: 4) {
+                        HStack {
+                            Label("Afternoon", systemImage: "sun.max.fill")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.yellow)
+                            Spacer()
+                        }
+                        HStack(spacing: 6) {
+                            StatPill(label: "Stand",
+                                     value: formatDuration(engine.pmStandTime), color: .green)
+                            StatPill(label: "Sit",
+                                     value: formatDuration(engine.pmSitTime),   color: .red)
+                            StatPill(label: "%",
+                                     value: "\(Int(engine.pmStandPercent))%",   color: .indigo)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        StatPill(label: "Standing",
+                                 value: formatDuration(engine.todayStandTime), color: .green)
+                        StatPill(label: "Sitting",
+                                 value: formatDuration(engine.todaySitTime),   color: .red)
+                        StatPill(label: "Stand %",
+                                 value: "\(Int(engine.todayStandPercent))%",   color: .indigo)
+                    }
                 }
 
                 GeometryReader { geo in
