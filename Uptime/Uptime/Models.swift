@@ -33,6 +33,32 @@ struct AppSettings: Codable {
     var goalPercent:   Int  = 40    // % of tracked time that should be standing
     var launchAtLogin: Bool = false // Registered with SMAppService
 
+    // ── Feature toggles ──────────────────────────────────────────────────
+    // Each feature can be turned on/off independently. Defaults are
+    // intentionally conservative — only weekSummaryEnabled starts ON.
+
+    /// Show total standing/sitting hours for the week below the bar chart.
+    var weekSummaryEnabled:      Bool   = true
+
+    /// Fire a notification every N minutes to nudge a short walk.
+    var breakReminderEnabled:    Bool   = false
+    var breakReminderMinutes:    Int    = 45
+
+    /// Auto-pause the timer when the Mac has been idle for N minutes.
+    var idleDetectionEnabled:    Bool   = false
+    var idleThresholdMinutes:    Int    = 5
+
+    /// Split today's stats into AM (before noon) and PM (after noon).
+    var morningAfternoonEnabled: Bool   = false
+
+    /// Log each completed session as a Calendar event (requires Calendars
+    /// entitlement — add the capability in Xcode Signing & Capabilities).
+    var calendarSyncEnabled:     Bool   = false
+
+    /// System sound name played when a goal notification fires.
+    /// Options: "default", "Glass", "Ping", "Pop", "Sosumi", "none"
+    var notificationSound:       String = "default"
+
     static let storageKey = "uptime_settings"
 
     static func load() -> AppSettings {
@@ -53,9 +79,9 @@ struct AppSettings: Codable {
 // Persists lifetime XP so the character's level only ever goes up,
 // independent of the trailing-week stats shown in the weekly bars.
 struct ProgressState: Codable {
-    var totalXP:             Int  = 0
+    var totalXP:             Int   = 0
     var lastAwardedDayStart: Date? = nil
-    var lastCelebratedLevel: Int  = 1
+    var lastCelebratedLevel: Int   = 1
 
     static let storageKey = "uptime_progress"
 
@@ -90,6 +116,7 @@ struct DayData: Identifiable {
     let goalMet:      Bool
     let hasData:      Bool     // false if < 1 min tracked
     let isToday:      Bool
+    let totalMinutes: Int      // total tracked minutes that day
 }
 
 // MARK: - Helpers
