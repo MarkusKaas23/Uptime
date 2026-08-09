@@ -4,14 +4,25 @@ struct SettingsView: View {
     @EnvironmentObject var engine: CycleEngine
     @Binding var showSettings: Bool
 
+    // ── Timer sliders ────────────────────────────────────────────────────
     @State private var sitMinutes:   Double = 30
     @State private var standMinutes: Double = 15
     @State private var goalPercent:  Double = 40
 
+    // ── Feature toggles ──────────────────────────────────────────────────
+    @State private var weekSummaryEnabled:      Bool   = true
+    @State private var breakReminderEnabled:    Bool   = false
+    @State private var breakReminderMinutes:    Double = 45
+    @State private var idleDetectionEnabled:    Bool   = false
+    @State private var idleThresholdMinutes:    Double = 5
+    @State private var morningAfternoonEnabled: Bool   = false
+    @State private var calendarSyncEnabled:     Bool   = false
+    @State private var notificationSound:       String = "default"
+
     var body: some View {
         VStack(spacing: 0) {
 
-            // Back header
+            // ── Back header ───────────────────────────────────────────────
             HStack {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
@@ -33,7 +44,6 @@ struct SettingsView: View {
 
                 Spacer()
 
-                // Balance the back button
                 Color.clear.frame(width: 48, height: 1)
             }
             .padding(.horizontal, 16)
@@ -119,14 +129,129 @@ struct SettingsView: View {
 
                     Divider()
 
+                    // ── Features ─────────────────────────────────────────
+                    sectionLabel("Features")
+
+                    // Weekly summary
+                    featureToggle(
+                        isOn: $weekSummaryEnabled,
+                        icon: "chart.bar.fill",
+                        title: "Weekly summary",
+                        subtitle: "Show total hours below the weekly bar chart"
+                    )
+
+                    // Break reminders
+                    VStack(alignment: .leading, spacing: 8) {
+                        featureToggle(
+                            isOn: $breakReminderEnabled,
+                            icon: "bell.badge.fill",
+                            title: "Break reminders",
+                            subtitle: "Get a nudge to walk around every so often"
+                        )
+                        if breakReminderEnabled {
+                            HStack {
+                                Text("Every \(Int(breakReminderMinutes)) min")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $breakReminderMinutes, in: 15...90, step: 5)
+                                    .tint(.orange)
+                            }
+                            .padding(.leading, 28)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: breakReminderEnabled)
+
+                    // Idle auto-pause
+                    VStack(alignment: .leading, spacing: 8) {
+                        featureToggle(
+                            isOn: $idleDetectionEnabled,
+                            icon: "zzz",
+                            title: "Idle auto-pause",
+                            subtitle: "Pause automatically when your Mac is idle"
+                        )
+                        if idleDetectionEnabled {
+                            HStack {
+                                Text("After \(Int(idleThresholdMinutes)) min idle")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 80, alignment: .leading)
+                                Slider(value: $idleThresholdMinutes, in: 2...15, step: 1)
+                                    .tint(.purple)
+                            }
+                            .padding(.leading, 28)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: idleDetectionEnabled)
+
+                    // Morning / Afternoon split
+                    featureToggle(
+                        isOn: $morningAfternoonEnabled,
+                        icon: "sun.and.horizon.fill",
+                        title: "AM / PM split",
+                        subtitle: "Split today's stats into morning and afternoon"
+                    )
+
+                    // Calendar sync
+                    VStack(alignment: .leading, spacing: 4) {
+                        featureToggle(
+                            isOn: $calendarSyncEnabled,
+                            icon: "calendar.badge.plus",
+                            title: "Calendar sync",
+                            subtitle: "Log each session as a Calendar event"
+                        )
+                        if calendarSyncEnabled {
+                            Text("⚠ Requires the Calendars capability in Xcode (Signing & Capabilities → + Capability → Calendars).")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                                .padding(.leading, 28)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: calendarSyncEnabled)
+
+                    Divider()
+
+                    // ── Notification sound ────────────────────────────────
+                    sectionLabel("Notification sound")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("", selection: $notificationSound) {
+                            Text("Default").tag("default")
+                            Text("Glass").tag("Glass")
+                            Text("Ping").tag("Ping")
+                            Text("Pop").tag("Pop")
+                            Text("Sosumi").tag("Sosumi")
+                            Text("None").tag("none")
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+
+                        Text("Plays when a sit or stand goal is reached.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
                     // ── Save ──────────────────────────────────────────────
                     Button {
-                        engine.applySettings(AppSettings(
-                            sitMinutes:    Int(sitMinutes),
-                            standMinutes:  Int(standMinutes),
-                            goalPercent:   Int(goalPercent),
-                            launchAtLogin: engine.settings.launchAtLogin
-                        ))
+                        let newSettings = AppSettings(
+                            sitMinutes:             Int(sitMinutes),
+                            standMinutes:           Int(standMinutes),
+                            goalPercent:            Int(goalPercent),
+                            launchAtLogin:          engine.settings.launchAtLogin,
+                            weekSummaryEnabled:     weekSummaryEnabled,
+                            breakReminderEnabled:   breakReminderEnabled,
+                            breakReminderMinutes:   Int(breakReminderMinutes),
+                            idleDetectionEnabled:   idleDetectionEnabled,
+                            idleThresholdMinutes:   Int(idleThresholdMinutes),
+                            morningAfternoonEnabled: morningAfternoonEnabled,
+                            calendarSyncEnabled:    calendarSyncEnabled,
+                            notificationSound:      notificationSound
+                        )
+                        engine.applySettings(newSettings)
                         withAnimation(.easeInOut(duration: 0.2)) { showSettings = false }
                     } label: {
                         Text("Save")
@@ -156,12 +281,22 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
         .onAppear {
-            sitMinutes   = Double(engine.settings.sitMinutes)
-            standMinutes = Double(engine.settings.standMinutes)
-            goalPercent  = Double(engine.settings.goalPercent)
+            let s = engine.settings
+            sitMinutes             = Double(s.sitMinutes)
+            standMinutes           = Double(s.standMinutes)
+            goalPercent            = Double(s.goalPercent)
+            weekSummaryEnabled     = s.weekSummaryEnabled
+            breakReminderEnabled   = s.breakReminderEnabled
+            breakReminderMinutes   = Double(s.breakReminderMinutes)
+            idleDetectionEnabled   = s.idleDetectionEnabled
+            idleThresholdMinutes   = Double(s.idleThresholdMinutes)
+            morningAfternoonEnabled = s.morningAfternoonEnabled
+            calendarSyncEnabled    = s.calendarSyncEnabled
+            notificationSound      = s.notificationSound
         }
     }
 
+    // MARK: - Helpers
     private func applyPreset(_ sit: Double, _ stand: Double) {
         withAnimation { sitMinutes = sit; standMinutes = stand }
     }
@@ -172,6 +307,28 @@ struct SettingsView: View {
             .foregroundColor(.secondary)
             .textCase(.uppercase)
             .tracking(1.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func featureToggle(isOn: Binding<Bool>, icon: String,
+                               title: String, subtitle: String) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13))
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .toggleStyle(.switch)
     }
 }
 
