@@ -1,16 +1,24 @@
 import SwiftUI
 
+/// Slide-over panel that shows all four giraffe stages with their unlock thresholds.
+///
+/// Tapping the character image in `PopoverView` presents this view via a trailing-edge
+/// slide transition. Locked stages are dimmed with a padlock overlay.
 struct StagesOverviewView: View {
     @EnvironmentObject var engine: CycleEngine
     @Binding var show: Bool
 
+    // MARK: - Data
+
+    /// Display metadata for each of the four stages, ordered 0–3.
     private let stages: [(name: String, subtitle: String, color: Color)] = [
-        ("The Cave Dweller",     "🦴",  .red),
-        ("The Office Slouch",    "😑",  .orange),
-        ("The Upriser",          "🙂",  .blue),
-        ("The Posture Champion", "🏆",  .purple),
+        ("The Cave Dweller",     "🦴", .red),
+        ("The Office Slouch",    "😑", .orange),
+        ("The Upriser",          "🙂", .blue),
+        ("The Posture Champion", "🏆", .purple),
     ]
 
+    /// Human-readable unlock threshold label, e.g. `"Level 6+"`.
     private func threshold(for stage: Int) -> String {
         "Level \(LevelSystem.stageThresholds[stage])+"
     }
@@ -68,7 +76,12 @@ struct StagesOverviewView: View {
     }
 }
 
-// MARK: – Individual stage card
+// MARK: - StageCard
+
+/// Card in the 2×2 stage grid showing the giraffe illustration, name, and unlock level.
+///
+/// Locked stages (`isUnlocked == false`) render at 30% opacity with a padlock overlay.
+/// The current stage is highlighted with a coloured border and a "NOW" badge.
 private struct StageCard: View {
     let stage:      Int
     let name:       String
