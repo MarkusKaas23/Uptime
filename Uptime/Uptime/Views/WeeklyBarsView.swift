@@ -1,7 +1,13 @@
 import SwiftUI
 
+/// Seven-day bar chart shown in the popover's character section.
+///
+/// Each bar encodes the standing percentage for one day; a coloured dot below
+/// the bar indicates whether the user's daily goal was met.
 struct WeeklyBarsView: View {
     @EnvironmentObject var engine: CycleEngine
+
+    // MARK: - Body
 
     var body: some View {
         let week = engine.weeklyData()
@@ -38,6 +44,9 @@ struct WeeklyBarsView: View {
         }
     }
 
+    // MARK: - Helpers
+
+    /// Fill colour for a day's bar: green (goal met), orange (≥50% of goal), red (below half), or clear (no data).
     private func barColor(for day: DayData) -> Color {
         guard day.hasData else { return .clear }
         if day.goalMet { return .green }
@@ -45,6 +54,7 @@ struct WeeklyBarsView: View {
         return .red
     }
 
+    /// Fill colour for the small dot below each bar: green/red on days with data, separator-grey otherwise.
     private func dotColor(for day: DayData) -> Color {
         guard day.hasData else { return Color(nsColor: .separatorColor) }
         return day.goalMet ? .green : .red
