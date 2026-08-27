@@ -1,14 +1,17 @@
-import Foundation
+import AppKit          // NSSound for custom notification sounds
 import Combine
-import UserNotifications
+import CoreGraphics    // idle detection
+import EventKit        // calendar sync
+import Foundation
 import ServiceManagement
-import CoreGraphics   // idle detection
-import EventKit       // calendar sync
-import AppKit         // NSSound for custom notification sounds
+import SwiftUI
+import UserNotifications
 
-// CycleEngine is the single source of truth for the entire app.
-// It drives the elapsed timer, manages sessions, and computes
-// all the statistics that the views display.
+/// Single source of truth for the entire Uptime app.
+///
+/// `CycleEngine` drives the one-second timer, manages sit/stand sessions,
+/// and exposes computed statistics that every view reads via `@EnvironmentObject`.
+/// It is the only type in the app that touches `UserDefaults` directly.
 class CycleEngine: ObservableObject {
 
     // MARK: - Published
@@ -280,15 +283,15 @@ class CycleEngine: ObservableObject {
     }
 
     // MARK: - Idle detection
-    /// Returns the number of seconds since the last mouse or keyboard event.
+    /// Returns the number of seconds since the most recent user input event
+    /// (mouse movement, key press, or scroll wheel), whichever is smallest.
     private func systemIdleSeconds() -> Double {
-        let mouseIdle = CGEventSource.secondsSinceLastEventType(
-            .combinedSessionState, eventType: .mouseMoved)
-        let keyIdle = CGEventSource.secondsSinceLastEventType(
-            .combinedSessionState, eventType: .keyDown)
-        let scrollIdle = CGEventSource.secondsSinceLastEventType(
-            .combinedSessionState, eventType: .scrollWheel)
-        return min(mouseIdle, min(keyIdle, scrollIdle))
+        let candidates: [Double] = [
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved),
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown),
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .scrollWheel),
+        ]
+        return candidates.min() ?? 0
     }
 
     // MARK: - Calendar sync
@@ -492,6 +495,7 @@ class CycleEngine: ObservableObject {
     // MARK: - Character stage (0 = cave dweller … 3 = champion)
     var characterStage: Int { LevelSystem.stage(for: level) }
 
+    /// Display name and accent colour for the current character stage.
     var stageInfo: (name: String, color: Color) {
         switch characterStage {
         case 0:  return ("The Cave Dweller",     .red)
@@ -525,6 +529,7 @@ class CycleEngine: ObservableObject {
     }
 
     // MARK: - Motivation message
+    /// Short encouraging message shown below the weekly bars, driven by streak + stage.
     var motivationMessage: String {
         switch (streak, characterStage) {
         case (7..., _): return "🔥 \(streak)-day streak — unstoppable!"
@@ -538,5 +543,3 @@ class CycleEngine: ObservableObject {
     }
 }
 
-// Needed for Color in stageInfo
-import SwiftUI
