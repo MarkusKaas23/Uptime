@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// Root content of the menu-bar popover window.
+///
+/// Composed of four stacked sections separated by dividers:
+/// 1. **Timer / State** — active timer, pause/away/end-day controls, or a recap panel.
+/// 2. **Character + Weekly bars** — giraffe illustration, level badge, 7-day chart.
+/// 3. **Today's stats** — standing/sitting totals and a daily-goal progress bar.
+/// 4. **Settings + Quit** — navigation row and terminate button.
+///
+/// Three `.overlay` layers slide in on top when needed:
+/// `StagesOverviewView` (trailing), `SettingsView` (bottom), `LevelUpView` (centre, highest z-order).
 struct PopoverView: View {
     @EnvironmentObject var engine: CycleEngine
     @State private var showSettings = false
@@ -355,7 +365,9 @@ struct PopoverView: View {
     }
 }
 
-// MARK: - Level Badge (pill + XP progress bar)
+// MARK: - LevelBadge
+
+/// Compact level pill (e.g. "Lv 7") followed by a thin XP progress capsule.
 private struct LevelBadge: View {
     @EnvironmentObject var engine: CycleEngine
 
@@ -383,7 +395,9 @@ private struct LevelBadge: View {
     }
 }
 
-// MARK: - Mode Button (Pause / Away / End Day)
+// MARK: - ModeButton
+
+/// Small icon + label button used for the Pause / Away / End Day secondary actions.
 private struct ModeButton: View {
     let icon:   String
     let label:  String
@@ -411,7 +425,9 @@ private struct ModeButton: View {
     }
 }
 
-// MARK: - Stat Pill
+// MARK: - StatPill
+
+/// Rounded pill that displays a labelled metric value (e.g. "1h 15m / Standing").
 private struct StatPill: View {
     let label: String
     let value: String
