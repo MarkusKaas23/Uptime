@@ -3,7 +3,12 @@ import UserNotifications
 
 @main
 struct UptimeApp: App {
+
+    // MARK: - State
+
     @StateObject private var engine = CycleEngine()
+
+    // MARK: - Scene
 
     var body: some Scene {
         MenuBarExtra {
@@ -12,7 +17,7 @@ struct UptimeApp: App {
                 .frame(width: 300)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: menuBarIcon(engine))
+                Image(systemName: menuBarIcon(for: engine))
                     .font(.system(size: 13, weight: .medium))
                 Text(engine.menuBarLabel)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -21,7 +26,10 @@ struct UptimeApp: App {
         .menuBarExtraStyle(.window)
     }
 
-    private func menuBarIcon(_ engine: CycleEngine) -> String {
+    // MARK: - Helpers
+
+    /// SF Symbol name for the current engine state shown in the menu bar.
+    private func menuBarIcon(for engine: CycleEngine) -> String {
         switch engine.trackingMode {
         case .active:
             if engine.goalReached { return "checkmark.circle.fill" }
@@ -31,6 +39,8 @@ struct UptimeApp: App {
         case .dayEnded: return "moon"
         }
     }
+
+    // MARK: - Init
 
     init() {
         UNUserNotificationCenter.current()
