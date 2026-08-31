@@ -1,17 +1,21 @@
 import Foundation
 
 // MARK: - Session
-// Represents one continuous sitting or standing period
+
+/// One continuous sitting or standing period recorded by the engine.
 struct Session: Codable, Identifiable {
     var id   = UUID()
+    /// `true` while the user was standing, `false` while sitting.
     var isStanding: Bool
     var start: Date
     var end:   Date
 
+    /// Wall-clock length of the session in seconds.
     var duration: TimeInterval { end.timeIntervalSince(start) }
 
     static let storageKey = "uptime_sessions"
 
+    /// Loads all persisted sessions from `UserDefaults`, or returns `[]` on failure.
     static func loadAll() -> [Session] {
         guard
             let data    = UserDefaults.standard.data(forKey: storageKey),
@@ -20,6 +24,7 @@ struct Session: Codable, Identifiable {
         return decoded
     }
 
+    /// Encodes and writes `sessions` to `UserDefaults`. Silently no-ops on encode failure.
     static func saveAll(_ sessions: [Session]) {
         guard let data = try? JSONEncoder().encode(sessions) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
@@ -27,6 +32,11 @@ struct Session: Codable, Identifiable {
 }
 
 // MARK: - AppSettings
+
+/// All user-configurable preferences for Uptime.
+///
+/// Stored as a single JSON blob in `UserDefaults`. Adding new optional properties
+/// with default values keeps this Codable-backward-compatible with older stored blobs.
 struct AppSettings: Codable {
     var sitMinutes:    Int  = 30    // Minutes per sit cycle
     var standMinutes:  Int  = 15    // Minutes per stand cycle
@@ -76,8 +86,13 @@ struct AppSettings: Codable {
 }
 
 // MARK: - ProgressState
-// Persists lifetime XP so the character's level only ever goes up,
-// independent of the trailing-week stats shown in the weekly bars.
+
+/// Persists the user's lifetime XP and level-up bookkeeping.
+///
+/// XP only ever increases — it is not affected by editing sessions or resetting
+/// the activity data. `lastAwardedDayStart` prevents double-awarding XP for the
+/// same calendar day across app launches. `lastCelebratedLevel` prevents the
+/// level-up toast from appearing again after the user has already seen it.
 struct ProgressState: Codable {
     var totalXP:             Int   = 0
     var lastAwardedDayStart: Date? = nil
@@ -100,26 +115,43 @@ struct ProgressState: Codable {
 }
 
 // MARK: - TrackingMode
+
+/// High-level state of the timer. Drives which UI panel is shown in the popover.
 enum TrackingMode: String, Codable {
-    case active      // Normal sit/stand cycle
-    case paused      // Timer on hold (short break)
-    case away        // Meeting / other activity
-    case dayEnded    // Done for the day
+    /// Normal sit/stand cycle — the one-second timer is ticking.
+    case active
+    /// Timer paused (short break). Time is not tracked.
+    case paused
+    /// User flagged themselves as away (meeting, errand, etc.). Time not tracked.
+    case away
+    /// User explicitly ended their work day. Stats are frozen until `startNewDay()`.
+    case dayEnded
 }
 
 // MARK: - DayData
-// Summarised stats for one day — used by the weekly bar chart
+
+/// Pre-computed stats for a single calendar day, consumed by `WeeklyBarsView`.
 struct DayData: Identifiable {
     let id           = UUID()
-    let label:        String   // e.g. "Mon"
-    let standPercent: Double   // 0–100
+    /// Abbreviated weekday label, e.g. `"Mon"`.
+    let label:        String
+    /// Standing percentage for the day, in the range `0…100`.
+    let standPercent: Double
+    /// `true` if `standPercent` met or exceeded the user's goal.
     let goalMet:      Bool
-    let hasData:      Bool     // false if < 1 min tracked
+    /// `false` when fewer than 60 seconds were tracked — bar is not drawn.
+    let hasData:      Bool
+    /// `true` for the rightmost bar (today).
     let isToday:      Bool
-    let totalMinutes: Int      // total tracked minutes that day
+    /// Total tracked minutes (standing + sitting combined).
+    let totalMinutes: Int
 }
 
 // MARK: - Helpers
+
+/// Formats a `TimeInterval` (seconds) as a compact human-readable string.
+///
+/// Examples: `"45m"`, `"1h"`, `"1h 30m"`.
 func formatDuration(_ interval: TimeInterval) -> String {
     let minutes = Int(interval) / 60
     guard minutes >= 60 else { return "\(minutes)m" }
