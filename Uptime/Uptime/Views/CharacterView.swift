@@ -1,11 +1,14 @@
 import SwiftUI
 
-// CharacterView displays one of four giraffe posture stage images.
-// stage 0 = Cave Dweller
-// stage 1 = Office Slouch
-// stage 2 = Upriser
-// stage 3 = Posture Champion
+/// Renders one of the four giraffe posture illustrations based on the user's current stage.
+///
+/// The asset names map as follows (1-indexed to match the image file names in Assets.xcassets):
+/// - Stage 0 → `GiraffeStage1`  (The Cave Dweller)
+/// - Stage 1 → `GiraffeStage2`  (The Office Slouch)
+/// - Stage 2 → `GiraffeStage3`  (The Upriser)
+/// - Stage 3 → `GiraffeStage4`  (The Posture Champion)
 struct CharacterView: View {
+    /// Stage index in the range `0…3`, sourced from `CycleEngine.characterStage`.
     let stage: Int
 
     var body: some View {
