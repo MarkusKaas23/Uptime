@@ -1,11 +1,16 @@
 import SwiftUI
 
-// Shown once whenever a finished day pushes the user across a level
-// (or stage) boundary. Dismissed by the user, then cleared via
-// engine.dismissLevelUpEvent() so it never reappears for the same event.
+/// Full-screen overlay shown once whenever a finished day pushes the user
+/// across a level (or stage) boundary.
+///
+/// The user dismisses it with "Nice!", which calls `engine.dismissLevelUpEvent()`
+/// to nil out `CycleEngine.levelUpEvent` so this view never reappears for the same event.
 struct LevelUpView: View {
     @EnvironmentObject var engine: CycleEngine
+    /// The level-up details to display.
     let event: LevelUpEvent
+
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 14) {
