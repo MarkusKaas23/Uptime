@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// Settings panel that slides up from the bottom of the popover.
+///
+/// All controls are kept in local `@State` and only applied to the engine when
+/// the user taps **Save**, preventing partial saves on back-navigation.
 struct SettingsView: View {
     @EnvironmentObject var engine: CycleEngine
     @Binding var showSettings: Bool
@@ -265,6 +269,7 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
 
                     // ── Danger zone ───────────────────────────────────────
+                    // Note: clears session history only — XP and level are preserved.
                     Button {
                         engine.sessions = []
                         Session.saveAll([])
@@ -297,10 +302,13 @@ struct SettingsView: View {
     }
 
     // MARK: - Helpers
+
+    /// Updates the sit/stand sliders to preset values with a brief animation.
     private func applyPreset(_ sit: Double, _ stand: Double) {
         withAnimation { sitMinutes = sit; standMinutes = stand }
     }
 
+    /// Styled uppercase section header label used throughout the settings scroll view.
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .medium))
@@ -310,6 +318,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Consistent toggle row used for every optional feature in the settings panel.
     @ViewBuilder
     private func featureToggle(isOn: Binding<Bool>, icon: String,
                                title: String, subtitle: String) -> some View {
@@ -332,7 +341,9 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Preset Button
+// MARK: - PresetButton
+
+/// Tappable card for a named sit/stand preset (e.g. "Standard — 30/15 min").
 private struct PresetButton: View {
     let title:    String
     let subtitle: String
